@@ -3,14 +3,14 @@ Source: https://de.dariah.eu/tatom/topic_model_visualization.html
 """
 
 # Import
-import jieba as jb,  numpy as np, os, pandas as pd, re
+import jieba as jb,  numpy as np, os, pandas as pd, random, re
 import matplotlib as mpl, matplotlib.pyplot as plt, seaborn as sns
 from matplotlib.font_manager import FontProperties
 from os import path
 from subprocess import check_output
 from sklearn.decomposition import LatentDirichletAllocation
 from sklearn.feature_extraction.text import TfidfVectorizer, CountVectorizer
-from wordcloud import WordCloud
+from wordcloud import get_single_color_func, WordCloud
 
 stopwords = [',', '?', '、', '。', '“', '”', '《', '》', '！', '，', '：', '；', '？', 
              '（', '）', ',', ':', 'hi', 'auntie', 'ok', '向左走', '向右走', '大家', '利申', 
@@ -82,13 +82,47 @@ def proportion_of_topic(model, feature_names, num_top_words=10, num_topics=5):
       plt.text(0.3, num_top_words-j-0.5, word, fontsize=fontsize_base*share, fontproperties=ChineseFont1)
   plt.show()
 
-def word_clouds(terms):
-  def terms_to_wordcounts(terms, multiplier=100):
-    return  " ".join([" ".join(int(multiplier*i[0]) * i[1]) for i in terms])
-  terms = terms_to_wordcounts(terms)
+class GroupedColorFunc(object):
+  # Source: https://amueller.github.io/word_cloud/auto_examples/colored_by_group.html?highlight=color_func
+  def __init__(self, color_to_words, default_color):
+    self.color_func_to_words = [
+        (get_single_color_func(color), set(words))
+        for (color, words) in color_to_words.items()]
+    self.default_color_func = get_single_color_func(default_color)
+
+  def get_color_func(self, word):
+    """Returns a single_color_func associated with the word"""
+    try:
+      color_func = next(
+          color_func for (color_func, words) in self.color_func_to_words
+          if word in words)
+    except StopIteration:
+      color_func = self.default_color_func
+    return color_func
+
+  def __call__(self, word, **kwargs):
+    return self.get_color_func(word)(word, **kwargs)
+
+def word_clouds(terms, groupbycolor=True, num_top_words=20, num_topics=5):
+  def terms_to_wordcounts(terms, multiplier=1000):
+    wordcounts = ''
+    for i in terms:
+      for j in range(num_top_words):
+        wordcounts += ' '.join(int(((num_top_words - j) * multiplier)) * [i[1][j]])
+    return wordcounts
+  wordcounts = terms_to_wordcounts(terms)
   font_path = './hanazono-20160201 (1)/HanaMinA.ttf'
-  wordcloud = WordCloud(font_path=font_path, background_color='white').generate(terms)
-  plt.imshow(wordcloud)
+  wordcloud = WordCloud(font_path=font_path, background_color='white', collocations=False).generate(wordcounts)
+  if groupbycolor == True:
+    default_color = 'grey'
+    color_list = []
+    r = lambda: random.randint(200, 255)
+    for i in range(num_topics):
+      color_list.append('#%02X%02X%02X' % (r(), r(), r()))
+    color_to_words = {color_list[i]: terms[i][1] for i in range(num_topics)}
+    grouped_color_func = GroupedColorFunc(color_to_words, default_color)
+    wordcloud.recolor(color_func=grouped_color_func)
+  plt.imshow(wordcloud, interpolation='bilinear')
   plt.axis("off")
   plt.show()
 
@@ -124,7 +158,6 @@ def main():
       sent = sent.split('|')
       for s in sent:
         words_list.append(sent_token(s))
-  
   lda_words_list = tfidfvectorizer(words_list)
   word_clouds(lda_words_list)
   #sklearn_lda, sklearn_wordvec, sklearn_wordvecmodel = tfidfvectorizer(words_list, return_model=True)
@@ -132,5 +165,5 @@ def main():
       
 
 if __name__ == '__main__':
-  #main()
-  simple_desc()
+  main()
+  #simple_desc()
